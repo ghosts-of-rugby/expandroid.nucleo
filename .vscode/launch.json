@@ -7,7 +7,7 @@
     {
       "name": "Cortex Debug",
       "cwd": "${workspaceFolder}",
-      "executable": "./build/expandroidMB.elf",
+      "executable": "./build/expandroid.nucleo.elf",
       "request": "launch",
       "type": "cortex-debug",
       "runToEntryPoint": "main",
