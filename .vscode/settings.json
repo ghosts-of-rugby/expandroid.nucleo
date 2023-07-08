@@ -5,6 +5,8 @@
     "*.world": "xml",
     "stm32f7xx_hal_tim.h": "c",
     "cmsis_os.h": "c",
-    "main.h": "c"
+    "main.h": "c",
+    "usb_device.h": "c",
+    "lwip.h": "c"
   },
 }
