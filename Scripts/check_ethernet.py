@@ -13,9 +13,11 @@ sock_cl, addr = sock_sv.accept()
 
 s = time.time()
 
+time.sleep(1)
+
 while True:
     # データ受信
-    data = sock_cl.recv(1024)
+    data = sock_cl.recv(50)
     elapsed = time.time() - s
     decoded = data.decode("utf-8")
     print(f"Time: {elapsed}, Received: {decoded}")
