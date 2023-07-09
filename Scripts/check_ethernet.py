@@ -13,8 +13,6 @@ sock_cl, addr = sock_sv.accept()
 
 s = time.time()
 
-time.sleep(1)
-
 while True:
     # データ受信
     data = sock_cl.recv(50)

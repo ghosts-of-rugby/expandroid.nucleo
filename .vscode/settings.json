@@ -7,6 +7,14 @@
     "cmsis_os.h": "c",
     "main.h": "c",
     "usb_device.h": "c",
-    "lwip.h": "c"
+    "lwip.h": "c",
+    "connections.h": "c"
   },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/*/**": true,
+    "**/.hg/store/**": true,
+    "build": true
+  }
 }

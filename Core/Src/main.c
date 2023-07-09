@@ -27,6 +27,7 @@
 #include "lwip/opt.h"
 #include "lwip/arch.h"
 #include "lwip/api.h"
+#include "jsmn/jsmn.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -346,6 +347,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
@@ -370,26 +375,30 @@ void StartDefaultTask(void *argument)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
-  struct netconn *conn;
-  while (1) {
-    conn = netconn_new(NETCONN_TCP);
-    err_t err = netconn_connect(conn, &gw, 1234);
-    if (err == ERR_OK) {
-      break;
-    }
-    netconn_close(conn);
-    netconn_delete(conn);
-    HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-    osDelay(100);
-  }
+  // struct netconn *conn;
+  // while (1) {
+  //   conn = netconn_new(NETCONN_TCP);
+  //   err_t err = netconn_connect(conn, &gw, 1234);
+  //   if (err == ERR_OK) {
+  //     break;
+  //   }
+  //   netconn_close(conn);
+  //   netconn_delete(conn);
+  //   HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+  //   osDelay(100);
+  // }
 
-  for (int i = 0;; i++) {
-    char message[50];
-    sprintf(message, "Hello, Server! This is message number: %d", i);
-    netconn_write(conn, message, strlen(message), NETCONN_COPY);
-    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    osDelay(10);
-  }
+  // for (int i = 0;; i++) {
+  //   char message[50];
+  //   sprintf(message, "Hello, Server! This is message number: %d", i);
+  //   netconn_write(conn, message, strlen(message), NETCONN_COPY);
+  //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  //   osDelay(10);
+  // }
+  for(;;)
+  {
+    osDelay(1);
+  }  
   /* USER CODE END 5 */
 }
 
@@ -406,7 +415,8 @@ void StartLedTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-    osDelay(1);
+    HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    osDelay(100);
   }
   /* USER CODE END StartLedTask */
 }
