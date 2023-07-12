@@ -39,6 +39,11 @@ st-flash write build/Expandroid.Nucleo.bin 0x8000000
 
 ## Configations
 
+### サーバーとクライアントのわけ方
+
+CANの送信，GPIOの読み込み，LEDの制御はPCから指令が来て，それに従いマイコン側が動作するため，サーバーとして動作する．
+一方，CANの受信割り込みや，GPIOの割り込みはマイコン側から指令が来て，それに従いPC側が動作するため，クライアントとして動作する．
+
 ### Network
 
 | Name    | Value         |

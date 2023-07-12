@@ -5,6 +5,7 @@ IPADDR = "192.168.137.1"
 PORT = 1234
 
 sock_sv = socket.socket(socket.AF_INET)
+print(f"IP:{IPADDR}, Port:{PORT}")
 sock_sv.bind((IPADDR, PORT))
 sock_sv.listen()
 

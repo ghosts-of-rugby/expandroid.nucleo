@@ -22,6 +22,9 @@
 #include "stm32f7xx_it.h"
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "connections.h"
+// #include "ethernetif.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -216,7 +219,11 @@ void EXTI15_10_IRQHandler(void)
   /* USER CODE BEGIN EXTI15_10_IRQn 1 */
 
   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-
+  uint32_t current_time = osKernelGetTickCount();
+  char message[50];
+  sprintf(message, "button", current_time);
+  lwip_write(sock_button, message, strlen(message));
+  // osSemaphoreRelease(TxPktSemaphore);
   /* USER CODE END EXTI15_10_IRQn 1 */
 }
 

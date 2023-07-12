@@ -27,7 +27,7 @@
 
 /* Within 'USER CODE' section, code will be kept by default at each generation */
 /* USER CODE BEGIN 0 */
-
+// extern osSemaphoreIdaTxPktSemaphore;
 /* USER CODE END 0 */
 
 /* Exported functions ------------------------------------------------------- */

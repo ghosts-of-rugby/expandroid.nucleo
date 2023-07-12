@@ -8,7 +8,8 @@
     "main.h": "c",
     "usb_device.h": "c",
     "lwip.h": "c",
-    "connections.h": "c"
+    "connections.h": "c",
+    "freertos.h": "c"
   },
   "files.watcherExclude": {
     "**/.git/objects/**": true,
