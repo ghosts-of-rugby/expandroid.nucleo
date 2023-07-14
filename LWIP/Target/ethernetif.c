@@ -616,7 +616,7 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
     GPIO_InitStruct.Alternate = GPIO_AF11_ETH;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-    GPIO_InitStruct.Pin = RMII_REF_CLK_Pin|RMII_MDIO_Pin|RMII_CRS_DV_Pin;
+    GPIO_InitStruct.Pin = GPIO_PIN_1|RMII_MDIO_Pin|GPIO_PIN_7;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
@@ -640,6 +640,8 @@ void HAL_ETH_MspInit(ETH_HandleTypeDef* ethHandle)
     /* Peripheral interrupt init */
     HAL_NVIC_SetPriority(ETH_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(ETH_IRQn);
+    HAL_NVIC_SetPriority(ETH_WKUP_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(ETH_WKUP_IRQn);
   /* USER CODE BEGIN ETH_MspInit 1 */
 
   /* USER CODE END ETH_MspInit 1 */
@@ -670,7 +672,7 @@ void HAL_ETH_MspDeInit(ETH_HandleTypeDef* ethHandle)
     */
     HAL_GPIO_DeInit(GPIOC, RMII_MDC_Pin|RMII_RXD0_Pin|RMII_RXD1_Pin);
 
-    HAL_GPIO_DeInit(GPIOA, RMII_REF_CLK_Pin|RMII_MDIO_Pin|RMII_CRS_DV_Pin);
+    HAL_GPIO_DeInit(GPIOA, GPIO_PIN_1|RMII_MDIO_Pin|GPIO_PIN_7);
 
     HAL_GPIO_DeInit(GPIOB, GPIO_PIN_0|RMII_TXD1_Pin);
 
@@ -678,6 +680,8 @@ void HAL_ETH_MspDeInit(ETH_HandleTypeDef* ethHandle)
 
     /* Peripheral interrupt Deinit*/
     HAL_NVIC_DisableIRQ(ETH_IRQn);
+
+    HAL_NVIC_DisableIRQ(ETH_WKUP_IRQn);
 
   /* USER CODE BEGIN ETH_MspDeInit 1 */
 

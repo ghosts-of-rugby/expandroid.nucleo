@@ -28,6 +28,8 @@
 #include "lwip/arch.h"
 #include "lwip/api.h"
 #include "lwip/sockets.h"
+#include "lwip/udp.h"
+#include "lwip/tcpip.h"
 #include "string.h"
 #include "cJSON/cJSON.h"
 #include "connections.h"
@@ -45,7 +47,6 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -57,22 +58,27 @@ UART_HandleTypeDef huart3;
 osThreadId_t defaultTaskHandle;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* Definitions for ledTask */
 osThreadId_t ledTaskHandle;
 const osThreadAttr_t ledTask_attributes = {
   .name = "ledTask",
-  .stack_size = 128 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for userBtnIrqClien */
 osThreadId_t userBtnIrqClienHandle;
 const osThreadAttr_t userBtnIrqClien_attributes = {
   .name = "userBtnIrqClien",
-  .stack_size = 1024 * 4,
+  .stack_size = 512 * 4,
   .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for buttonPressedEvent */
+osEventFlagsId_t buttonPressedEventHandle;
+const osEventFlagsAttr_t buttonPressedEvent_attributes = {
+  .name = "buttonPressedEvent"
 };
 /* USER CODE BEGIN PV */
 
@@ -163,6 +169,10 @@ int main(void)
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
+  /* Create the event(s) */
+  /* creation of buttonPressedEvent */
+  buttonPressedEventHandle = osEventFlagsNew(&buttonPressedEvent_attributes);
+
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
   /* USER CODE END RTOS_EVENTS */
@@ -172,6 +182,7 @@ int main(void)
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  // osThreadExit();
   while (1)
   {
     /* USER CODE END WHILE */
@@ -427,9 +438,43 @@ void StartLedTask(void *argument)
 {
   /* USER CODE BEGIN StartLedTask */
   /* Infinite loop */
-  for (;;) {
-    HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+
+  int newconn, size;
+  struct sockaddr_in address, remote;
+
+  sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0);
+
+  /* Bind to port 12345 with default IP address */
+  memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_port = htons(LED_PORT);
+  address.sin_addr.s_addr = INADDR_ANY;
+
+  while (lwip_bind(sock_button, (struct sockaddr *)&address,
+                      sizeof(address)) < 0) {
+    /* Connection failed. Wait some time and try again. */
+    lwip_close(sock_button);
+    sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0);
     osDelay(100);
+  }
+
+  /* Put socket into listening mode */
+  if (lwip_listen(sock_button, 20) != 0) {
+    lwip_close(sock_button);
+    return;
+  }
+  size = sizeof(remote);
+  newconn = lwip_accept(sock_button, (struct sockaddr *)&remote, (socklen_t *)&size);
+  for (;;) {
+    // lwip_write(sock_button, "button", strlen("button"));
+    char recv_buffer[128];
+    int bytes_read = lwip_read(newconn, &recv_buffer, sizeof(recv_buffer));
+    if (bytes_read > 0) {
+      HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+    }
+    // osEventFlagsSet(buttonPressedEventHandle, 0x00000001U);
+
+    // osDelay(100);
   }
   /* USER CODE END StartLedTask */
 }
@@ -441,50 +486,41 @@ void StartLedTask(void *argument)
  * @retval None
  */
 /* USER CODE END Header_StartUserBtnIrqClientInit */
-void StartUserBtnIrqClientInit(void *argument)
-{
+void StartUserBtnIrqClientInit(void *argument) {
   /* USER CODE BEGIN StartUserBtnIrqClientInit */
   /* Infinite loop */
   struct sockaddr_in address;
-  // char send_buffer[128], recv_buffer[128];
 
   /* Create a new TCP socket */
   if ((sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     return;
   }
-  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  // osDelay(100);
 
-  osDelay(100);
   /* Connect to server */
   memset(&address, 0, sizeof(address));
   address.sin_family = AF_INET;
-  address.sin_port = htons(1234);
+  address.sin_port = htons(USER_Btn_IRQ_Port);
   address.sin_addr.s_addr = inet_addr(SERVER_IP);
 
-  if (lwip_connect(sock_button, (struct sockaddr *)&address, sizeof(address)) <
-      0) {
+  while (lwip_connect(sock_button, (struct sockaddr *)&address,
+                      sizeof(address)) < 0) {
+    /* Connection failed. Wait some time and try again. */
     lwip_close(sock_button);
-    return;
+    sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0);
+    osDelay(100);
   }
-  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-  // osSemaphoreRelease(TxPktSemaphore);
-  // for (;;) {
-  //   // uint32_t current_time = osKernelGetTickCount();
-  //   // char message[50];
-  //   // sprintf(message, "{\"time\":%lu}", current_time);
-  //   // lwip_write(sock_button, message, strlen(message));
-  //   // osDelay(100);
-  //   osSemaphoreRelease(TxPktSemaphore);
-
-  // }
-
-  osThreadExit();
-  // for(;;)
-  // {
-  //   osDelay(1);
-  // }
-
+  // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  for (;;) {
+    osEventFlagsWait(buttonPressedEventHandle, 0x00000001U, osFlagsWaitAll,
+                     osWaitForever);
+    // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    uint32_t current_time = osKernelGetTickCount();
+    char message[50];
+    sprintf(message, "{\"time\":%lu}", current_time);
+    lwip_write(sock_button, message, strlen(message));
+  }
   /* USER CODE END StartUserBtnIrqClientInit */
 }
 

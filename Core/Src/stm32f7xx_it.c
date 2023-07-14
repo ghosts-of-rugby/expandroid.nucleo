@@ -23,8 +23,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "connections.h"
-// #include "ethernetif.h"
+#include "ethernetif.h"
 #include "string.h"
+#include "lwip/sockets.h"
+#include "lwip/tcpip.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -218,11 +220,15 @@ void EXTI15_10_IRQHandler(void)
   HAL_GPIO_EXTI_IRQHandler(USER_Btn_Pin);
   /* USER CODE BEGIN EXTI15_10_IRQn 1 */
 
-  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-  uint32_t current_time = osKernelGetTickCount();
-  char message[50];
-  sprintf(message, "button", current_time);
-  lwip_write(sock_button, message, strlen(message));
+  // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  osEventFlagsSet(buttonPressedEventHandle, 0x00000001U);
+  // osSignalSet(buttonPressedEventHandle, 0x00000001U);
+  // uint32_t current_time = osKernelGetTickCount();
+  // char message[50];
+  // sprintf(message, "button", current_time);
+  // osSemaphoreAcquire(TxPktSemaphore, 1000);
+  // osSemaphoreAcquire(RxPktSemaphore,1000);
+  // lwip_write(sock_button, "button", strlen("button"));
   // osSemaphoreRelease(TxPktSemaphore);
   /* USER CODE END EXTI15_10_IRQn 1 */
 }
@@ -239,6 +245,20 @@ void ETH_IRQHandler(void)
   /* USER CODE BEGIN ETH_IRQn 1 */
 
   /* USER CODE END ETH_IRQn 1 */
+}
+
+/**
+  * @brief This function handles Ethernet wake-up interrupt through EXTI line 19.
+  */
+void ETH_WKUP_IRQHandler(void)
+{
+  /* USER CODE BEGIN ETH_WKUP_IRQn 0 */
+
+  /* USER CODE END ETH_WKUP_IRQn 0 */
+  HAL_ETH_IRQHandler(&heth);
+  /* USER CODE BEGIN ETH_WKUP_IRQn 1 */
+
+  /* USER CODE END ETH_WKUP_IRQn 1 */
 }
 
 /**

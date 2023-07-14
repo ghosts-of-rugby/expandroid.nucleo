@@ -4,7 +4,8 @@
 
 // struct netconn *conn_button;  // connection for USER_Btn
 
-int sock_button;
+int sock_button = -1;
+int sock_led = -1;
 
 typedef struct Connection {
   struct netconn *conn;
