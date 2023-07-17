@@ -28,8 +28,6 @@
 #include "lwip/arch.h"
 #include "lwip/api.h"
 #include "lwip/sockets.h"
-#include "lwip/udp.h"
-#include "lwip/tcpip.h"
 #include "string.h"
 #include "cJSON/cJSON.h"
 #include "connections.h"
@@ -65,14 +63,21 @@ const osThreadAttr_t defaultTask_attributes = {
 osThreadId_t ledTaskHandle;
 const osThreadAttr_t ledTask_attributes = {
   .name = "ledTask",
-  .stack_size = 512 * 4,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for userBtnIrqClien */
 osThreadId_t userBtnIrqClienHandle;
 const osThreadAttr_t userBtnIrqClien_attributes = {
   .name = "userBtnIrqClien",
-  .stack_size = 512 * 4,
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityLow,
+};
+/* Definitions for Can01SendTask */
+osThreadId_t Can01SendTaskHandle;
+const osThreadAttr_t Can01SendTask_attributes = {
+  .name = "Can01SendTask",
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for buttonPressedEvent */
@@ -92,6 +97,7 @@ static void MX_CAN1_Init(void);
 void StartDefaultTask(void *argument);
 void StartLedTask(void *argument);
 void StartUserBtnIrqClientInit(void *argument);
+void StartCan01SendTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -164,6 +170,9 @@ int main(void)
 
   /* creation of userBtnIrqClien */
   userBtnIrqClienHandle = osThreadNew(StartUserBtnIrqClientInit, NULL, &userBtnIrqClien_attributes);
+
+  /* creation of Can01SendTask */
+  Can01SendTaskHandle = osThreadNew(StartCan01SendTask, NULL, &Can01SendTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -265,11 +274,11 @@ static void MX_CAN1_Init(void)
 
   /* USER CODE END CAN1_Init 1 */
   hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 16;
+  hcan1.Init.Prescaler = 3;
   hcan1.Init.Mode = CAN_MODE_NORMAL;
   hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan1.Init.TimeSeg1 = CAN_BS1_1TQ;
-  hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_12TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_3TQ;
   hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = DISABLE;
   hcan1.Init.AutoWakeUp = DISABLE;
@@ -399,31 +408,7 @@ void StartDefaultTask(void *argument)
   /* init code for USB_DEVICE */
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 5 */
-  /* Infinite loop */
-  // struct netconn *conn;
-  // while (1) {
-  //   conn = netconn_new(NETCONN_TCP);
-  //   err_t err = netconn_connect(conn, &gw, 1234);
-  //   if (err == ERR_OK) {
-  //     break;
-  //   }
-  //   netconn_close(conn);
-  //   netconn_delete(conn);
-  //   HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-  //   osDelay(100);
-  // }
-
-  // for (int i = 0;; i++) {
-  //   char message[50];
-  //   sprintf(message, "Hello, Server! This is message number: %d", i);
-  //   netconn_write(conn, message, strlen(message), NETCONN_COPY);
-  //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-  //   osDelay(10);
-  // }
-  for(;;)
-  {
-    osDelay(1);
-  }  
+  osThreadExit();
   /* USER CODE END 5 */
 }
 
@@ -438,43 +423,44 @@ void StartLedTask(void *argument)
 {
   /* USER CODE BEGIN StartLedTask */
   /* Infinite loop */
+  int sock;
+  // struct sockaddr_in addres, client_address;
+  // socklen_t client_address_len;
 
-  int newconn, size;
+  // create_udp_server(LED_PORT, &sock, &addres, &client_address, &client_address_len);
+
+  // for (;;) {
+  //   char recv_buffer[128];
+  //   int bytes_read =
+  //       lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
+  //                     (struct sockaddr *)&client_address, &client_address_len);
+  //   if (bytes_read > 0) {
+  //     HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+  //   }
+  // }
+
   struct sockaddr_in address, remote;
+  socklen_t size;
 
-  sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0);
-
-  /* Bind to port 12345 with default IP address */
+  /* Create a new UDP socket */
+  sock = lwip_socket(AF_INET, SOCK_DGRAM, 0);
+  /* Bind to port LED_PORT with default IP address */
   memset(&address, 0, sizeof(address));
   address.sin_family = AF_INET;
   address.sin_port = htons(LED_PORT);
   address.sin_addr.s_addr = INADDR_ANY;
 
-  while (lwip_bind(sock_button, (struct sockaddr *)&address,
-                      sizeof(address)) < 0) {
-    /* Connection failed. Wait some time and try again. */
-    lwip_close(sock_button);
-    sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0);
-    osDelay(100);
-  }
+  lwip_bind(sock, (struct sockaddr *)&address, sizeof(address));
 
-  /* Put socket into listening mode */
-  if (lwip_listen(sock_button, 20) != 0) {
-    lwip_close(sock_button);
-    return;
-  }
   size = sizeof(remote);
-  newconn = lwip_accept(sock_button, (struct sockaddr *)&remote, (socklen_t *)&size);
+
   for (;;) {
-    // lwip_write(sock_button, "button", strlen("button"));
     char recv_buffer[128];
-    int bytes_read = lwip_read(newconn, &recv_buffer, sizeof(recv_buffer));
+    int bytes_read = lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
+                                   (struct sockaddr *)&remote, &size);
     if (bytes_read > 0) {
       HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
     }
-    // osEventFlagsSet(buttonPressedEventHandle, 0x00000001U);
-
-    // osDelay(100);
   }
   /* USER CODE END StartLedTask */
 }
@@ -486,42 +472,72 @@ void StartLedTask(void *argument)
  * @retval None
  */
 /* USER CODE END Header_StartUserBtnIrqClientInit */
-void StartUserBtnIrqClientInit(void *argument) {
+void StartUserBtnIrqClientInit(void *argument)
+{
   /* USER CODE BEGIN StartUserBtnIrqClientInit */
-  /* Infinite loop */
-  struct sockaddr_in address;
+  int sock;
+  struct sockaddr_in dst_addr;
 
-  /* Create a new TCP socket */
-  if ((sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+  /* Create a new UDP socket */
+  if ((sock = lwip_socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
     return;
   }
-  // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-  // osDelay(100);
 
-  /* Connect to server */
-  memset(&address, 0, sizeof(address));
-  address.sin_family = AF_INET;
-  address.sin_port = htons(USER_Btn_IRQ_Port);
-  address.sin_addr.s_addr = inet_addr(SERVER_IP);
+  /* Set up destination address */
+  memset(&dst_addr, 0, sizeof(dst_addr));
+  dst_addr.sin_family = AF_INET;
+  dst_addr.sin_port = htons(USER_Btn_IRQ_Port);
+  dst_addr.sin_addr.s_addr = inet_addr("192.168.137.1");
 
-  while (lwip_connect(sock_button, (struct sockaddr *)&address,
-                      sizeof(address)) < 0) {
-    /* Connection failed. Wait some time and try again. */
-    lwip_close(sock_button);
-    sock_button = lwip_socket(AF_INET, SOCK_STREAM, 0);
-    osDelay(100);
-  }
   // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+
   for (;;) {
     osEventFlagsWait(buttonPressedEventHandle, 0x00000001U, osFlagsWaitAll,
                      osWaitForever);
+    char message[] = "button";
+    lwip_sendto(sock, message, strlen(message), 0, (struct sockaddr *)&dst_addr,
+                sizeof(dst_addr));
+
     // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    uint32_t current_time = osKernelGetTickCount();
-    char message[50];
-    sprintf(message, "{\"time\":%lu}", current_time);
-    lwip_write(sock_button, message, strlen(message));
   }
   /* USER CODE END StartUserBtnIrqClientInit */
+}
+
+/* USER CODE BEGIN Header_StartCan01SendTask */
+/**
+* @brief Function implementing the Can01SendTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartCan01SendTask */
+void StartCan01SendTask(void *argument)
+{
+  /* USER CODE BEGIN StartCan01SendTask */
+
+
+  // HAL_CAN_Start(&hcan1);
+  /* Infinite loop */
+  for (;;) {
+    // uint8_t message[8] = {0, 1, 2, 3, 4, 5, 6, 7};
+    // CAN_TxHeaderTypeDef TxHeader;
+
+    // TxHeader.DLC = 8;             // Data length of 8
+    // TxHeader.StdId = 0x123;       // Standard ID
+    // TxHeader.IDE = CAN_ID_STD;    // Standard ID
+    // TxHeader.RTR = CAN_RTR_DATA;  // Data frame
+
+    // uint32_t mailbox;
+    // if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &mailbox) != HAL_OK) {
+    //   // Transmission request failed
+    //   // Error_Handler();
+    //   HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+    // } else {
+    //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    // }
+    // HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &mailbox);
+    osDelay(100);
+  }
+  /* USER CODE END StartCan01SendTask */
 }
 
 /**

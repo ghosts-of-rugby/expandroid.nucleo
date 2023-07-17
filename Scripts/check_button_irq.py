@@ -1,23 +1,23 @@
+import datetime
 import socket
-import time
 
-host = "192.168.137.1"
-# host = "127.0.0.1"
-port = 1234
+# Server's IP address and port number
+server_ip = "192.168.137.1"  # replace with your server's IP
+server_port = 1234  # replace with your server's port
 
-sock_sv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-print(f"IP:{host}, Port:{port}")
-sock_sv.bind((host, port))
-sock_sv.listen(1)
+# Create a UDP socket
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# クライアントの接続受付
-sock_cl, addr = sock_sv.accept()
-
-s = time.time()
+# Bind the socket to the port
+server_address = (server_ip, server_port)
+sock.bind(server_address)
 
 while True:
-    # データ受信
-    data = sock_cl.recv(1024)
-    elapsed = time.time() - s
-    decoded = data.decode("utf-8")
-    print(f"Time: {elapsed}, Received: {decoded}")
+    print("\nwaiting to receive message")
+    data, addr = sock.recvfrom(4096)
+
+    # Get the current time
+    current_time = datetime.datetime.now()
+
+    print("received {} bytes from {} at {}".format(len(data), addr, current_time))
+    print(data.decode())
