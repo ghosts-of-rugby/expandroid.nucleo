@@ -27,6 +27,7 @@
 #include "lwip/opt.h"
 #include "lwip/arch.h"
 #include "lwip/api.h"
+#include "lwip/udp.h"
 #include "lwip/sockets.h"
 #include "string.h"
 #include "cJSON/cJSON.h"
@@ -34,6 +35,7 @@
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
+typedef StaticTask_t osStaticThreadDef_t;
 /* USER CODE BEGIN PTD */
 
 /* USER CODE END PTD */
@@ -61,23 +63,38 @@ const osThreadAttr_t defaultTask_attributes = {
 };
 /* Definitions for ledTask */
 osThreadId_t ledTaskHandle;
+uint32_t ledTaskBuffer[ 1024 ];
+osStaticThreadDef_t ledTaskControlBlock;
 const osThreadAttr_t ledTask_attributes = {
   .name = "ledTask",
-  .stack_size = 128 * 4,
+  .cb_mem = &ledTaskControlBlock,
+  .cb_size = sizeof(ledTaskControlBlock),
+  .stack_mem = &ledTaskBuffer[0],
+  .stack_size = sizeof(ledTaskBuffer),
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for userBtnIrqClien */
 osThreadId_t userBtnIrqClienHandle;
+uint32_t userBtnIrqClienBuffer[ 128 ];
+osStaticThreadDef_t userBtnIrqClienControlBlock;
 const osThreadAttr_t userBtnIrqClien_attributes = {
   .name = "userBtnIrqClien",
-  .stack_size = 128 * 4,
+  .cb_mem = &userBtnIrqClienControlBlock,
+  .cb_size = sizeof(userBtnIrqClienControlBlock),
+  .stack_mem = &userBtnIrqClienBuffer[0],
+  .stack_size = sizeof(userBtnIrqClienBuffer),
   .priority = (osPriority_t) osPriorityLow,
 };
-/* Definitions for Can01SendTask */
-osThreadId_t Can01SendTaskHandle;
-const osThreadAttr_t Can01SendTask_attributes = {
-  .name = "Can01SendTask",
-  .stack_size = 128 * 4,
+/* Definitions for Can01Task */
+osThreadId_t Can01TaskHandle;
+uint32_t Can01TaskBuffer[ 1024 ];
+osStaticThreadDef_t Can01TaskControlBlock;
+const osThreadAttr_t Can01Task_attributes = {
+  .name = "Can01Task",
+  .cb_mem = &Can01TaskControlBlock,
+  .cb_size = sizeof(Can01TaskControlBlock),
+  .stack_mem = &Can01TaskBuffer[0],
+  .stack_size = sizeof(Can01TaskBuffer),
   .priority = (osPriority_t) osPriorityLow,
 };
 /* Definitions for buttonPressedEvent */
@@ -97,7 +114,7 @@ static void MX_CAN1_Init(void);
 void StartDefaultTask(void *argument);
 void StartLedTask(void *argument);
 void StartUserBtnIrqClientInit(void *argument);
-void StartCan01SendTask(void *argument);
+void StartCan01Task(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -171,8 +188,8 @@ int main(void)
   /* creation of userBtnIrqClien */
   userBtnIrqClienHandle = osThreadNew(StartUserBtnIrqClientInit, NULL, &userBtnIrqClien_attributes);
 
-  /* creation of Can01SendTask */
-  Can01SendTaskHandle = osThreadNew(StartCan01SendTask, NULL, &Can01SendTask_attributes);
+  /* creation of Can01Task */
+  Can01TaskHandle = osThreadNew(StartCan01Task, NULL, &Can01Task_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -422,44 +439,30 @@ void StartDefaultTask(void *argument)
 void StartLedTask(void *argument)
 {
   /* USER CODE BEGIN StartLedTask */
-  /* Infinite loop */
   int sock;
-  // struct sockaddr_in addres, client_address;
-  // socklen_t client_address_len;
 
-  // create_udp_server(LED_PORT, &sock, &addres, &client_address, &client_address_len);
+  struct sockaddr_in client_address;
+  socklen_t client_address_len;
 
-  // for (;;) {
-  //   char recv_buffer[128];
-  //   int bytes_read =
-  //       lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
-  //                     (struct sockaddr *)&client_address, &client_address_len);
-  //   if (bytes_read > 0) {
-  //     HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-  //   }
-  // }
+  create_udp_server(PORT_LED, &sock, &client_address, &client_address_len);
 
-  struct sockaddr_in address, remote;
-  socklen_t size;
-
-  /* Create a new UDP socket */
-  sock = lwip_socket(AF_INET, SOCK_DGRAM, 0);
-  /* Bind to port LED_PORT with default IP address */
-  memset(&address, 0, sizeof(address));
-  address.sin_family = AF_INET;
-  address.sin_port = htons(LED_PORT);
-  address.sin_addr.s_addr = INADDR_ANY;
-
-  lwip_bind(sock, (struct sockaddr *)&address, sizeof(address));
-
-  size = sizeof(remote);
+  client_address_len = sizeof(client_address);
 
   for (;;) {
     char recv_buffer[128];
-    int bytes_read = lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
-                                   (struct sockaddr *)&remote, &size);
+    int bytes_read =
+        lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
+                      (struct sockaddr *)&client_address, &client_address_len);
     if (bytes_read > 0) {
-      HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+      // Null-terminate the received data
+      recv_buffer[bytes_read] = '\0';
+
+      // Parse the JSON data
+      cJSON *json = cJSON_Parse(recv_buffer);
+      if (json != NULL) {
+        control_led_from_json(json);
+        cJSON_Delete(json);
+      }
     }
   }
   /* USER CODE END StartLedTask */
@@ -476,48 +479,54 @@ void StartUserBtnIrqClientInit(void *argument)
 {
   /* USER CODE BEGIN StartUserBtnIrqClientInit */
   int sock;
-  struct sockaddr_in dst_addr;
 
-  /* Create a new UDP socket */
-  if ((sock = lwip_socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-    return;
-  }
+  struct sockaddr_in client_address;
+  socklen_t client_address_len;
 
-  /* Set up destination address */
-  memset(&dst_addr, 0, sizeof(dst_addr));
-  dst_addr.sin_family = AF_INET;
-  dst_addr.sin_port = htons(USER_Btn_IRQ_Port);
-  dst_addr.sin_addr.s_addr = inet_addr("192.168.137.1");
-
-  // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+  create_udp_server(PORT_USER_Btn_IRQ, &sock, &client_address,
+                    &client_address_len);
 
   for (;;) {
     osEventFlagsWait(buttonPressedEventHandle, 0x00000001U, osFlagsWaitAll,
                      osWaitForever);
-    char message[] = "button";
-    lwip_sendto(sock, message, strlen(message), 0, (struct sockaddr *)&dst_addr,
-                sizeof(dst_addr));
-
+    uint32_t time = osKernelGetTickCount();
+    char message[50];
+    sprintf(message, "{\"time\":%lu}", time);
+    lwip_sendto(sock, message, strlen(message), 0,
+                (struct sockaddr *)&client_address, client_address_len);
     // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
   }
   /* USER CODE END StartUserBtnIrqClientInit */
 }
 
-/* USER CODE BEGIN Header_StartCan01SendTask */
+/* USER CODE BEGIN Header_StartCan01Task */
 /**
-* @brief Function implementing the Can01SendTask thread.
+* @brief Function implementing the Can01Task thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartCan01SendTask */
-void StartCan01SendTask(void *argument)
+/* USER CODE END Header_StartCan01Task */
+void StartCan01Task(void *argument)
 {
-  /* USER CODE BEGIN StartCan01SendTask */
+  /* USER CODE BEGIN StartCan01Task */
+  int sock;
 
+  struct sockaddr_in client_address;
+  socklen_t client_address_len;
 
-  // HAL_CAN_Start(&hcan1);
+  create_udp_server(PORT_CAN01, &sock, &client_address,
+                    &client_address_len);
+  
+  lwip_ioctl(sock, FIONBIO, 1); // set non-blocking
+
   /* Infinite loop */
-  for (;;) {
+  for(;;)
+  {
+    char recv_buffer[128];
+    int bytes_read =
+        lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
+                      (struct sockaddr *)&client_address, &client_address_len);
+    // HAL_CAN_Start(&hcan1);
     // uint8_t message[8] = {0, 1, 2, 3, 4, 5, 6, 7};
     // CAN_TxHeaderTypeDef TxHeader;
 
@@ -535,9 +544,10 @@ void StartCan01SendTask(void *argument)
     //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
     // }
     // HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &mailbox);
-    osDelay(100);
+    // HAL_CAN_ConfigFilter(&hcan1);
+    osDelay(1);
   }
-  /* USER CODE END StartCan01SendTask */
+  /* USER CODE END StartCan01Task */
 }
 
 /**
