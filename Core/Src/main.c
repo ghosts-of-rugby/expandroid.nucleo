@@ -19,8 +19,11 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
+#include "can.h"
 #include "lwip.h"
+#include "usart.h"
 #include "usb_device.h"
+#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -35,7 +38,6 @@
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
-typedef StaticTask_t osStaticThreadDef_t;
 /* USER CODE BEGIN PTD */
 
 /* USER CODE END PTD */
@@ -50,72 +52,14 @@ typedef StaticTask_t osStaticThreadDef_t;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-CAN_HandleTypeDef hcan1;
 
-UART_HandleTypeDef huart3;
-
-/* Definitions for defaultTask */
-osThreadId_t defaultTaskHandle;
-const osThreadAttr_t defaultTask_attributes = {
-  .name = "defaultTask",
-  .stack_size = 512 * 4,
-  .priority = (osPriority_t) osPriorityNormal,
-};
-/* Definitions for ledTask */
-osThreadId_t ledTaskHandle;
-uint32_t ledTaskBuffer[ 1024 ];
-osStaticThreadDef_t ledTaskControlBlock;
-const osThreadAttr_t ledTask_attributes = {
-  .name = "ledTask",
-  .cb_mem = &ledTaskControlBlock,
-  .cb_size = sizeof(ledTaskControlBlock),
-  .stack_mem = &ledTaskBuffer[0],
-  .stack_size = sizeof(ledTaskBuffer),
-  .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for userBtnIrqClien */
-osThreadId_t userBtnIrqClienHandle;
-uint32_t userBtnIrqClienBuffer[ 128 ];
-osStaticThreadDef_t userBtnIrqClienControlBlock;
-const osThreadAttr_t userBtnIrqClien_attributes = {
-  .name = "userBtnIrqClien",
-  .cb_mem = &userBtnIrqClienControlBlock,
-  .cb_size = sizeof(userBtnIrqClienControlBlock),
-  .stack_mem = &userBtnIrqClienBuffer[0],
-  .stack_size = sizeof(userBtnIrqClienBuffer),
-  .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for Can01Task */
-osThreadId_t Can01TaskHandle;
-uint32_t Can01TaskBuffer[ 1024 ];
-osStaticThreadDef_t Can01TaskControlBlock;
-const osThreadAttr_t Can01Task_attributes = {
-  .name = "Can01Task",
-  .cb_mem = &Can01TaskControlBlock,
-  .cb_size = sizeof(Can01TaskControlBlock),
-  .stack_mem = &Can01TaskBuffer[0],
-  .stack_size = sizeof(Can01TaskBuffer),
-  .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for buttonPressedEvent */
-osEventFlagsId_t buttonPressedEventHandle;
-const osEventFlagsAttr_t buttonPressedEvent_attributes = {
-  .name = "buttonPressedEvent"
-};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_USART3_UART_Init(void);
-static void MX_CAN1_Init(void);
-void StartDefaultTask(void *argument);
-void StartLedTask(void *argument);
-void StartUserBtnIrqClientInit(void *argument);
-void StartCan01Task(void *argument);
-
+void MX_FREERTOS_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -160,48 +104,8 @@ int main(void)
   /* USER CODE END 2 */
 
   /* Init scheduler */
-  osKernelInitialize();
-
-  /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
-  /* USER CODE END RTOS_MUTEX */
-
-  /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
-  /* USER CODE END RTOS_SEMAPHORES */
-
-  /* USER CODE BEGIN RTOS_TIMERS */
-  /* start timers, add new ones, ... */
-  /* USER CODE END RTOS_TIMERS */
-
-  /* USER CODE BEGIN RTOS_QUEUES */
-  /* add queues, ... */
-  /* USER CODE END RTOS_QUEUES */
-
-  /* Create the thread(s) */
-  /* creation of defaultTask */
-  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
-
-  /* creation of ledTask */
-  ledTaskHandle = osThreadNew(StartLedTask, NULL, &ledTask_attributes);
-
-  /* creation of userBtnIrqClien */
-  userBtnIrqClienHandle = osThreadNew(StartUserBtnIrqClientInit, NULL, &userBtnIrqClien_attributes);
-
-  /* creation of Can01Task */
-  Can01TaskHandle = osThreadNew(StartCan01Task, NULL, &Can01Task_attributes);
-
-  /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
-  /* USER CODE END RTOS_THREADS */
-
-  /* Create the event(s) */
-  /* creation of buttonPressedEvent */
-  buttonPressedEventHandle = osEventFlagsNew(&buttonPressedEvent_attributes);
-
-  /* USER CODE BEGIN RTOS_EVENTS */
-  /* add events, ... */
-  /* USER CODE END RTOS_EVENTS */
+  osKernelInitialize();  /* Call init function for freertos objects (in freertos.c) */
+  MX_FREERTOS_Init();
 
   /* Start scheduler */
   osKernelStart();
@@ -275,280 +179,9 @@ void SystemClock_Config(void)
   }
 }
 
-/**
-  * @brief CAN1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_CAN1_Init(void)
-{
-
-  /* USER CODE BEGIN CAN1_Init 0 */
-
-  /* USER CODE END CAN1_Init 0 */
-
-  /* USER CODE BEGIN CAN1_Init 1 */
-
-  /* USER CODE END CAN1_Init 1 */
-  hcan1.Instance = CAN1;
-  hcan1.Init.Prescaler = 3;
-  hcan1.Init.Mode = CAN_MODE_NORMAL;
-  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan1.Init.TimeSeg1 = CAN_BS1_12TQ;
-  hcan1.Init.TimeSeg2 = CAN_BS2_3TQ;
-  hcan1.Init.TimeTriggeredMode = DISABLE;
-  hcan1.Init.AutoBusOff = DISABLE;
-  hcan1.Init.AutoWakeUp = DISABLE;
-  hcan1.Init.AutoRetransmission = DISABLE;
-  hcan1.Init.ReceiveFifoLocked = DISABLE;
-  hcan1.Init.TransmitFifoPriority = DISABLE;
-  if (HAL_CAN_Init(&hcan1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN CAN1_Init 2 */
-
-  /* USER CODE END CAN1_Init 2 */
-
-}
-
-/**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART3_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART3_Init 0 */
-
-  /* USER CODE END USART3_Init 0 */
-
-  /* USER CODE BEGIN USART3_Init 1 */
-
-  /* USER CODE END USART3_Init 1 */
-  huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
-  huart3.Init.WordLength = UART_WORDLENGTH_8B;
-  huart3.Init.StopBits = UART_STOPBITS_1;
-  huart3.Init.Parity = UART_PARITY_NONE;
-  huart3.Init.Mode = UART_MODE_TX_RX;
-  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART3_Init 2 */
-
-  /* USER CODE END USART3_Init 2 */
-
-}
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOG_CLK_ENABLE();
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : USER_Btn_Pin */
-  GPIO_InitStruct.Pin = USER_Btn_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : LD3_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = LD3_Pin|LD2_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : USB_PowerSwitchOn_Pin */
-  GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(USB_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : USB_OverCurrent_Pin */
-  GPIO_InitStruct.Pin = USB_OverCurrent_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
-
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
-  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
-
-/* USER CODE BEGIN MX_GPIO_Init_2 */
-/* USER CODE END MX_GPIO_Init_2 */
-}
-
 /* USER CODE BEGIN 4 */
 
 /* USER CODE END 4 */
-
-/* USER CODE BEGIN Header_StartDefaultTask */
-/**
-  * @brief  Function implementing the defaultTask thread.
-  * @param  argument: Not used
-  * @retval None
-  */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void *argument)
-{
-  /* init code for LWIP */
-  MX_LWIP_Init();
-
-  /* init code for USB_DEVICE */
-  MX_USB_DEVICE_Init();
-  /* USER CODE BEGIN 5 */
-  osThreadExit();
-  /* USER CODE END 5 */
-}
-
-/* USER CODE BEGIN Header_StartLedTask */
-/**
-* @brief Function implementing the ledTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartLedTask */
-void StartLedTask(void *argument)
-{
-  /* USER CODE BEGIN StartLedTask */
-  int sock;
-
-  struct sockaddr_in client_address;
-  socklen_t client_address_len;
-
-  create_udp_server(PORT_LED, &sock, &client_address, &client_address_len);
-
-  client_address_len = sizeof(client_address);
-
-  for (;;) {
-    char recv_buffer[128];
-    int bytes_read =
-        lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
-                      (struct sockaddr *)&client_address, &client_address_len);
-    if (bytes_read > 0) {
-      // Null-terminate the received data
-      recv_buffer[bytes_read] = '\0';
-
-      // Parse the JSON data
-      cJSON *json = cJSON_Parse(recv_buffer);
-      if (json != NULL) {
-        control_led_from_json(json);
-        cJSON_Delete(json);
-      }
-    }
-  }
-  /* USER CODE END StartLedTask */
-}
-
-/* USER CODE BEGIN Header_StartUserBtnIrqClientInit */
-/**
- * @brief Function implementing the userBtnIrqClien thread.
- * @param argument: Not used
- * @retval None
- */
-/* USER CODE END Header_StartUserBtnIrqClientInit */
-void StartUserBtnIrqClientInit(void *argument)
-{
-  /* USER CODE BEGIN StartUserBtnIrqClientInit */
-  int sock;
-
-  struct sockaddr_in client_address;
-  socklen_t client_address_len;
-
-  create_udp_server(PORT_USER_Btn_IRQ, &sock, &client_address,
-                    &client_address_len);
-
-  for (;;) {
-    osEventFlagsWait(buttonPressedEventHandle, 0x00000001U, osFlagsWaitAll,
-                     osWaitForever);
-    uint32_t time = osKernelGetTickCount();
-    char message[50];
-    sprintf(message, "{\"time\":%lu}", time);
-    lwip_sendto(sock, message, strlen(message), 0,
-                (struct sockaddr *)&client_address, client_address_len);
-    // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-  }
-  /* USER CODE END StartUserBtnIrqClientInit */
-}
-
-/* USER CODE BEGIN Header_StartCan01Task */
-/**
-* @brief Function implementing the Can01Task thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_StartCan01Task */
-void StartCan01Task(void *argument)
-{
-  /* USER CODE BEGIN StartCan01Task */
-  int sock;
-
-  struct sockaddr_in client_address;
-  socklen_t client_address_len;
-
-  create_udp_server(PORT_CAN01, &sock, &client_address,
-                    &client_address_len);
-  
-  lwip_ioctl(sock, FIONBIO, 1); // set non-blocking
-
-  /* Infinite loop */
-  for(;;)
-  {
-    char recv_buffer[128];
-    int bytes_read =
-        lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
-                      (struct sockaddr *)&client_address, &client_address_len);
-    // HAL_CAN_Start(&hcan1);
-    // uint8_t message[8] = {0, 1, 2, 3, 4, 5, 6, 7};
-    // CAN_TxHeaderTypeDef TxHeader;
-
-    // TxHeader.DLC = 8;             // Data length of 8
-    // TxHeader.StdId = 0x123;       // Standard ID
-    // TxHeader.IDE = CAN_ID_STD;    // Standard ID
-    // TxHeader.RTR = CAN_RTR_DATA;  // Data frame
-
-    // uint32_t mailbox;
-    // if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &mailbox) != HAL_OK) {
-    //   // Transmission request failed
-    //   // Error_Handler();
-    //   HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-    // } else {
-    //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    // }
-    // HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &mailbox);
-    // HAL_CAN_ConfigFilter(&hcan1);
-    osDelay(1);
-  }
-  /* USER CODE END StartCan01Task */
-}
 
 /**
   * @brief  Period elapsed callback in non blocking mode

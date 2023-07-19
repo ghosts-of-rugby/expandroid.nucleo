@@ -2,7 +2,7 @@ import socket
 import time
 
 NUCLEO_IP = "192.168.137.131"
-BUTTON_PORT = 1234
+PORT = 1234
 
 
 def start_clent():
@@ -10,7 +10,9 @@ def start_clent():
 
     socket_cl = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    socket_cl.sendto("hello".encode(), (NUCLEO_IP, BUTTON_PORT))  # Initilize the connection
+    socket_cl.bind(("0.0.0.0", PORT))
+
+    socket_cl.sendto("hello".encode(), (NUCLEO_IP, PORT))  # Initilize the connection
 
     try:
         while True:
