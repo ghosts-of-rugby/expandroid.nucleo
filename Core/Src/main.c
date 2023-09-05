@@ -34,7 +34,6 @@
 #include "lwip/sockets.h"
 #include "string.h"
 #include "cJSON/cJSON.h"
-#include "connections.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

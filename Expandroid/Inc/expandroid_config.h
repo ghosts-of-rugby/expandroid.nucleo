@@ -1,0 +1,11 @@
+#ifndef EXPADROID_CONFIG_H_
+#define EXPADROID_CONFIG_H_
+
+#define SERVER_IP "192.168.137.1"
+
+#define PORT_BTN 1234
+#define PORT_LED 1235
+#define PORT_MOTOR 1236
+#define PORT_ECHO 1237
+
+#endif /* EXPADROID_CONFIG_H_ */

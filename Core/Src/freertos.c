@@ -26,13 +26,19 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "connections.h"
+#include "can.h"
+#include "expandroid_can.h"
+#include "expandroid_config.h"
+#include "expandroid_led.h"
+#include "expandroid_robomaster.h"
+#include "expandroid_udp.h"
 #include "lwip/sockets.h"
-
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 typedef StaticTask_t osStaticThreadDef_t;
+typedef StaticQueue_t osStaticMessageQDef_t;
 /* USER CODE BEGIN PTD */
 
 /* USER CODE END PTD */
@@ -82,22 +88,59 @@ const osThreadAttr_t userBtnIrqClien_attributes = {
     .stack_size = sizeof(userBtnIrqClienBuffer),
     .priority = (osPriority_t)osPriorityLow,
 };
-/* Definitions for Can01Task */
-osThreadId_t Can01TaskHandle;
-uint32_t Can01TaskBuffer[1024];
-osStaticThreadDef_t Can01TaskControlBlock;
-const osThreadAttr_t Can01Task_attributes = {
-    .name = "Can01Task",
-    .cb_mem = &Can01TaskControlBlock,
-    .cb_size = sizeof(Can01TaskControlBlock),
-    .stack_mem = &Can01TaskBuffer[0],
-    .stack_size = sizeof(Can01TaskBuffer),
+/* Definitions for MotorControlTas */
+osThreadId_t MotorControlTasHandle;
+uint32_t MotorControlTasBuffer[1024];
+osStaticThreadDef_t MotorControlTasControlBlock;
+const osThreadAttr_t MotorControlTas_attributes = {
+    .name = "MotorControlTas",
+    .cb_mem = &MotorControlTasControlBlock,
+    .cb_size = sizeof(MotorControlTasControlBlock),
+    .stack_mem = &MotorControlTasBuffer[0],
+    .stack_size = sizeof(MotorControlTasBuffer),
+    .priority = (osPriority_t)osPriorityBelowNormal,
+};
+/* Definitions for MotorCmdTask */
+osThreadId_t MotorCmdTaskHandle;
+uint32_t MotorCmdTaskBuffer[1024];
+osStaticThreadDef_t MotorCmdTaskControlBlock;
+const osThreadAttr_t MotorCmdTask_attributes = {
+    .name = "MotorCmdTask",
+    .cb_mem = &MotorCmdTaskControlBlock,
+    .cb_size = sizeof(MotorCmdTaskControlBlock),
+    .stack_mem = &MotorCmdTaskBuffer[0],
+    .stack_size = sizeof(MotorCmdTaskBuffer),
     .priority = (osPriority_t)osPriorityLow,
 };
+/* Definitions for udpEchoBackTask */
+osThreadId_t udpEchoBackTaskHandle;
+uint32_t udpEchoBackTaskBuffer[128];
+osStaticThreadDef_t udpEchoBackTaskControlBlock;
+const osThreadAttr_t udpEchoBackTask_attributes = {
+    .name = "udpEchoBackTask",
+    .cb_mem = &udpEchoBackTaskControlBlock,
+    .cb_size = sizeof(udpEchoBackTaskControlBlock),
+    .stack_mem = &udpEchoBackTaskBuffer[0],
+    .stack_size = sizeof(udpEchoBackTaskBuffer),
+    .priority = (osPriority_t)osPriorityLow,
+};
+/* Definitions for statusMessageQueue */
+osMessageQueueId_t statusMessageQueueHandle;
+uint8_t statusMessageQueueBuffer[16 * sizeof(uint8_t)];
+osStaticMessageQDef_t statusMessageQueueControlBlock;
+const osMessageQueueAttr_t statusMessageQueue_attributes = {
+    .name = "statusMessageQueue",
+    .cb_mem = &statusMessageQueueControlBlock,
+    .cb_size = sizeof(statusMessageQueueControlBlock),
+    .mq_mem = &statusMessageQueueBuffer,
+    .mq_size = sizeof(statusMessageQueueBuffer)};
 /* Definitions for buttonPressedEvent */
 osEventFlagsId_t buttonPressedEventHandle;
 const osEventFlagsAttr_t buttonPressedEvent_attributes = {
     .name = "buttonPressedEvent"};
+/* Definitions for motorInitEvent */
+osEventFlagsId_t motorInitEventHandle;
+const osEventFlagsAttr_t motorInitEvent_attributes = {.name = "motorInitEvent"};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -107,7 +150,9 @@ const osEventFlagsAttr_t buttonPressedEvent_attributes = {
 void StartDefaultTask(void *argument);
 void StartLedTask(void *argument);
 void StartUserBtnIrqClientInit(void *argument);
-void StartCan01Task(void *argument);
+void MotorControlTask(void *argument);
+void MotorCommandTask(void *argument);
+void udpEchoBack(void *argument);
 
 extern void MX_LWIP_Init(void);
 extern void MX_USB_DEVICE_Init(void);
@@ -135,6 +180,11 @@ void MX_FREERTOS_Init(void) {
   /* start timers, add new ones, ... */
   /* USER CODE END RTOS_TIMERS */
 
+  /* Create the queue(s) */
+  /* creation of statusMessageQueue */
+  statusMessageQueueHandle =
+      osMessageQueueNew(16, sizeof(uint8_t), &statusMessageQueue_attributes);
+
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
@@ -151,8 +201,17 @@ void MX_FREERTOS_Init(void) {
   userBtnIrqClienHandle =
       osThreadNew(StartUserBtnIrqClientInit, NULL, &userBtnIrqClien_attributes);
 
-  /* creation of Can01Task */
-  Can01TaskHandle = osThreadNew(StartCan01Task, NULL, &Can01Task_attributes);
+  /* creation of MotorControlTas */
+  MotorControlTasHandle =
+      osThreadNew(MotorControlTask, NULL, &MotorControlTas_attributes);
+
+  /* creation of MotorCmdTask */
+  MotorCmdTaskHandle =
+      osThreadNew(MotorCommandTask, NULL, &MotorCmdTask_attributes);
+
+  /* creation of udpEchoBackTask */
+  udpEchoBackTaskHandle =
+      osThreadNew(udpEchoBack, NULL, &udpEchoBackTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -161,6 +220,9 @@ void MX_FREERTOS_Init(void) {
   /* Create the event(s) */
   /* creation of buttonPressedEvent */
   buttonPressedEventHandle = osEventFlagsNew(&buttonPressedEvent_attributes);
+
+  /* creation of motorInitEvent */
+  motorInitEventHandle = osEventFlagsNew(&motorInitEvent_attributes);
 
   /* USER CODE BEGIN RTOS_EVENTS */
   /* add events, ... */
@@ -199,7 +261,8 @@ void StartLedTask(void *argument) {
   struct sockaddr_in client_address;
   socklen_t client_address_len;
 
-  create_udp_server(PORT_LED, &sock, &client_address, &client_address_len);
+  create_udp_server(PORT_LED, &sock, &client_address, &client_address_len,
+                    SOCKET_BLOCKING);
 
   client_address_len = sizeof(client_address);
 
@@ -215,10 +278,15 @@ void StartLedTask(void *argument) {
       // Parse the JSON data
       cJSON *json = cJSON_Parse(recv_buffer);
       if (json != NULL) {
-        control_led_from_json(json);
+        cJSON *led2 = cJSON_GetObjectItem(json, "led2");
+        control_led_from_json(led2, LD2_GPIO_Port, LD2_Pin);
+        cJSON *led3 = cJSON_GetObjectItem(json, "led3");
+        control_led_from_json(led3, LD3_GPIO_Port, LD3_Pin);
         cJSON_Delete(json);
       }
     }
+    // sleep
+    osDelay(10);
   }
   /* USER CODE END StartLedTask */
 }
@@ -232,13 +300,9 @@ void StartLedTask(void *argument) {
 /* USER CODE END Header_StartUserBtnIrqClientInit */
 void StartUserBtnIrqClientInit(void *argument) {
   /* USER CODE BEGIN StartUserBtnIrqClientInit */
-  int sock;
-
-  struct sockaddr_in client_address;
-  socklen_t client_address_len;
-
-  create_udp_server(PORT_USER_Btn_IRQ, &sock, &client_address,
-                    &client_address_len);
+  server_info server;
+  char msg_buffer[128];
+  create_udp(&server, PORT_BTN, msg_buffer, sizeof(msg_buffer));
 
   for (;;) {
     osEventFlagsWait(buttonPressedEventHandle, 0x00000001U, osFlagsWaitAll,
@@ -246,60 +310,88 @@ void StartUserBtnIrqClientInit(void *argument) {
     uint32_t time = osKernelGetTickCount();
     char message[50];
     sprintf(message, "{\"time\":%lu}", time);
-    lwip_sendto(sock, message, strlen(message), 0,
-                (struct sockaddr *)&client_address, client_address_len);
-    // HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+    send_udp(&server, message, strlen(message));
   }
   /* USER CODE END StartUserBtnIrqClientInit */
 }
 
-/* USER CODE BEGIN Header_StartCan01Task */
+/* USER CODE BEGIN Header_MotorControlTask */
 /**
- * @brief Function implementing the Can01Task thread.
+ * @brief Function implementing the MotorControlTas thread.
  * @param argument: Not used
  * @retval None
  */
-/* USER CODE END Header_StartCan01Task */
-void StartCan01Task(void *argument) {
-  /* USER CODE BEGIN StartCan01Task */
-  int sock;
-
-  struct sockaddr_in client_address;
-  socklen_t client_address_len;
-
-  create_udp_server(PORT_CAN01, &sock, &client_address, &client_address_len);
-
-  lwip_ioctl(sock, FIONBIO, 1);  // set non-blocking
-
+/* USER CODE END Header_MotorControlTask */
+void MotorControlTask(void *argument) {
+  /* USER CODE BEGIN MotorControlTask */
+  start_can(&hcan1);
+  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) !=
+      HAL_OK) {
+    Error_Handler();
+  }
   /* Infinite loop */
   for (;;) {
-    char recv_buffer[128];
-    int bytes_read =
-        lwip_recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0,
-                      (struct sockaddr *)&client_address, &client_address_len);
-    // HAL_CAN_Start(&hcan1);
-    // uint8_t message[8] = {0, 1, 2, 3, 4, 5, 6, 7};
-    // CAN_TxHeaderTypeDef TxHeader;
-
-    // TxHeader.DLC = 8;             // Data length of 8
-    // TxHeader.StdId = 0x123;       // Standard ID
-    // TxHeader.IDE = CAN_ID_STD;    // Standard ID
-    // TxHeader.RTR = CAN_RTR_DATA;  // Data frame
-
-    // uint32_t mailbox;
-    // if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &mailbox) != HAL_OK)
-    // {
-    //   // Transmission request failed
-    //   // Error_Handler();
-    //   HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-    // } else {
-    //   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-    // }
-    // HAL_CAN_AddTxMessage(&hcan1, &TxHeader, message, &mailbox);
-    // HAL_CAN_ConfigFilter(&hcan1);
+    CAN_TxHeaderTypeDef header;
+    uint8_t message[8] = {0};
+    get_motor_tx_message(&header, message);
+    HAL_CAN_AddTxMessage(&hcan1, &header, message, NULL);
     osDelay(1);
   }
-  /* USER CODE END StartCan01Task */
+  /* USER CODE END MotorControlTask */
+}
+
+/* USER CODE BEGIN Header_MotorCommandTask */
+/**
+ * @brief Function implementing the MotorCmdTask thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_MotorCommandTask */
+void MotorCommandTask(void *argument) {
+  /* USER CODE BEGIN MotorCommandTask */
+  server_info server;
+  char msg_buffer[512];
+
+  create_udp(&server, PORT_MOTOR, msg_buffer, sizeof(msg_buffer));
+
+  nonblocking_udp(&server);
+
+  init_motors();
+
+  while (1) {
+    /* Infinite loop */
+    recv_dtype type = recv_udp(&server);
+    if (type == RECV_DATA) {
+      cJSON *json = cJSON_Parse(server.msg_buffer);
+      if (json != NULL) {
+        process_motor_command(json);
+        cJSON_Delete(json);
+      }
+    }
+    get_motor_command_feedback(server.msg_buffer);
+    send_udp(&server, server.msg_buffer, strlen(server.msg_buffer));
+    osDelay(10);
+  }
+  /* USER CODE END MotorCommandTask */
+}
+
+/* USER CODE BEGIN Header_udpEchoBack */
+/**
+ * @brief Function implementing the udpEchoBackTask thread.
+ * @param argument: Not used
+ * @retval None
+ */
+/* USER CODE END Header_udpEchoBack */
+void udpEchoBack(void *argument) {
+  /* USER CODE BEGIN udpEchoBack */
+  // server_info server;
+  // char recv_buffer[128];
+
+  // create_udp(&server, PORT_MOTOR, recv_buffer, sizeof(recv_buffer));
+  for (;;) {
+    osDelay(1);
+  }
+  /* USER CODE END udpEchoBack */
 }
 
 /* Private application code --------------------------------------------------*/

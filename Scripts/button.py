@@ -12,9 +12,10 @@ def start_clent():
 
     socket_cl.bind(("0.0.0.0", PORT))
 
-    socket_cl.sendto("hello".encode(), (NUCLEO_IP, PORT))  # Initilize the connection
+    socket_cl.sendto("SYN".encode(), (NUCLEO_IP, PORT))  # Initilize the connection
 
     try:
+        print("start")
         while True:
             rx_data, _ = socket_cl.recvfrom(1024)
             print(f"time: {time.time() - start_time:>６.2f}, recv: {rx_data.decode()}")
